@@ -34,26 +34,9 @@ class Tokenizer:
         self.pattern = re.compile(
             r'[-+]?\d*\.\d+|[-+]?\d+|\b\w+\b', re.UNICODE)
 
-    def tokenize(self, text_file_path):
-        """
-        Reads the file line by line and extracts tokens using a regular expression.
-        Tokens are converted to lowercase and filtered to remove single-letter tokens.
-        :param text_file_path: Path to the text file.
-        :return: List of tokens.
-        """
-        tokens = []
-        try:
-            with open(text_file_path, 'r', encoding='utf-8') as file:
-                for line in file:
-                    # Find all tokens in the line.
-                    line_tokens = self.pattern.findall(line.lower())
-                    # Filter out tokens that are a single character.
-                    filtered = [token for token in line_tokens if len(token) > 1]
-                    tokens.extend(filtered)
-        except FileNotFoundError:
-            print(f"ERROR: File not found: {text_file_path}")
-            sys.exit(1)
-        return tokens
+    def tokenize(self, text: str):
+        tokens = self.pattern.findall(text.lower())
+        return [token for token in tokens if len(token) > 1]
 
     def compute_word_frequencies(self, tokens):
         return dict(Counter(tokens))
