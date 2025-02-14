@@ -6,12 +6,13 @@ from urllib.parse import urlparse, urljoin, urldefrag, urlunparse
 from collections import defaultdict, Counter
 from bs4 import BeautifulSoup
 
-# for tokenizing and computing frequencies (assumed to be defined in tokenize_functions)
+# for tokenizing and computing frequencies
 from tokenizer import Tokenizer
 from tokenizer import STOPWORDS as stopwords
 
+# --- Constants ---
 MIN_HTML_SIZE = 1024
-LARGE_PAGE_THRESHOLD = 1 * 1024 * 1024
+LARGE_PAGE_THRESHOLD = 5 * 1024 * 1024  # 5 MB threshold; pages larger than this are skipped.
 SCRAPER_DELAY = 0.001
 
 # --- Logging configuration ---
@@ -100,7 +101,6 @@ def scraper(url, resp):
         A list of valid URLs (strings) extracted from the page.
     """
     logging.info(f"Scraping URL: {url}")
-    # Basic response validation.
     if resp is None or resp.raw_response is None:
         logging.info(f"Response is None for URL: {url}")
         return []
@@ -113,10 +113,15 @@ def scraper(url, resp):
         logging.info(f"Skipping {url} due to low data size ({len(html_content)} bytes).")
         return []
     
-    # Parse content once.
+    # parse content once.
     soup = _get_soup(resp)
     page_text = soup.get_text(separator=" ", strip=True)
     tokens = tk.tokenize(page_text)
+    
+    # skip pages that have fewer than 50 words.
+    if len(tokens) < 50:
+        logging.info(f"Skipping {url}: too few words ({len(tokens)} tokens).")
+        return []
     
     # Compute checksum to avoid duplicate pages.
     checksum = hashlib.md5(page_text.encode("utf-8")).hexdigest()
@@ -125,12 +130,9 @@ def scraper(url, resp):
         return []
     PAGE_CHECKSUMS.add(checksum)
     
-    # Skip pages that are too large or have low information.
+    # Skip pages that are too large.
     if len(html_content) > LARGE_PAGE_THRESHOLD:
         logging.info(f"Skipping {url}: page size {len(html_content)} exceeds threshold.")
-        return []
-    if len(tokens) < 50:
-        logging.info(f"Skipping {url}: too few words ({len(tokens)} tokens).")
         return []
     
     # Update global statistics.
