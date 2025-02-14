@@ -3,7 +3,7 @@ import time
 import logging
 import hashlib
 from urllib.parse import urlparse, urljoin, urldefrag, urlunparse
-from collections import defaultdict, Counter
+from collections import defaultdict
 from bs4 import BeautifulSoup
 
 # for tokenizing and computing frequencies
@@ -12,7 +12,8 @@ from tokenizer import STOPWORDS as stopwords
 
 # --- Constants ---
 MIN_HTML_SIZE = 1024
-LARGE_PAGE_THRESHOLD = 5 * 1024 * 1024  # 5 MB threshold; pages larger than this are skipped.
+LARGE_PAGE_THRESHOLD = 5 * 1024 * 1024  # 5 MB threshold.
+MIN_WORD_COUNT = 200                    # Skip pages with fewer than 200 tokens.
 SCRAPER_DELAY = 0.001
 
 # --- Logging configuration ---
@@ -39,7 +40,8 @@ class CrawlerStats:
 
     def check_and_update_ics_domain(self, url: str):
         parsed = urlparse(url)
-        if parsed.netloc.endswith("ics.uci.edu"):
+        # Exact domain check is done in is_valid; here we simply count if the netloc is exactly "ics.uci.edu"
+        if parsed.netloc == "ics.uci.edu":
             self.ics_subdomains[parsed.netloc] += 1
 
     def update_frequent_words(self, tokens: list):
@@ -82,23 +84,37 @@ def _get_soup(resp) -> BeautifulSoup:
     """Return a BeautifulSoup object for the response content."""
     return BeautifulSoup(resp.raw_response.content, "html.parser")
 
-# --- Main Functions ---
+def _is_trap_url(url: str) -> bool:
+    """
+    General trap detection:
+      - If the URL contains certain keywords (e.g., calendar, ical, archive, revisions, rss, feed).
+      - If the URL path contains date segments (e.g. /day/YYYY-MM-DD, /date/YYYY-MM-DD or /YYYY/MM/DD).
+    """
+    lower_url = url.lower()
+    trap_keywords = ["calendar", "ical", "archive", "revisions", "rss", "feed"]
+    for keyword in trap_keywords:
+        if keyword in lower_url:
+            return True
+
+    # Check for date patterns in URL path.
+    date_patterns = [
+        re.compile(r'/day/\d{4}-\d{2}-\d{2}'),
+        re.compile(r'/date/\d{4}-\d{2}-\d{2}'),
+        re.compile(r'/\d{4}/\d{2}/\d{2}')
+    ]
+    for pattern in date_patterns:
+        if pattern.search(lower_url):
+            return True
+
+    return False
+
+# --- Main Functions (names preserved) ---
 
 def scraper(url, resp):
     """
     Given a URL and the corresponding response from the cache server,
     extract all hyperlinks from the page (if the page is valid) and
     return only those URLs that are considered valid by is_valid.
-    
-    Parameters:
-        url (str): The URL that was requested.
-        resp: The response object containing:
-            - resp.url: The final URL (after redirection).
-            - resp.status: The HTTP status code (200 is OK).
-            - resp.raw_response.content: The HTML content of the page.
-    
-    Returns:
-        A list of valid URLs (strings) extracted from the page.
     """
     logging.info(f"Scraping URL: {url}")
     if resp is None or resp.raw_response is None:
@@ -151,16 +167,6 @@ def scraper(url, resp):
 def extract_next_links(url, resp):
     """
     Extracts and returns a list of hyperlinks from resp.raw_response.content.
-    
-    Parameters:
-        url (str): The original URL used for the request.
-        resp: The response object containing:
-            - resp.url: The URL after any redirection.
-            - resp.status: HTTP status code (200 indicates success).
-            - resp.raw_response.content: The raw HTML content of the page.
-    
-    Returns:
-        list: A list of URLs (strings) extracted from the page.
     """
     extracted_links = []
     if resp.status != 200:
@@ -181,7 +187,7 @@ def extract_next_links(url, resp):
                 absolute_url, _ = urldefrag(absolute_url)
                 norm = _normalize_url(absolute_url)
                 if norm == _normalize_url(resp.url):
-                    continue
+                    continue  # Skip self-referential links.
                 if norm not in seen:
                     seen.add(norm)
                     extracted_links.append(absolute_url)
@@ -193,7 +199,6 @@ def extract_next_links(url, resp):
 def is_valid(url):
     """
     Determines whether the given URL should be crawled.
-    
     Only URLs that:
       - Use the http or https scheme,
       - Belong to the allowed domains,
@@ -213,8 +218,13 @@ def is_valid(url):
         if parsed.scheme not in {"http", "https"}:
             return False
 
-        allowed_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"]
-        if not any(parsed.netloc.endswith(domain) for domain in allowed_domains):
+        # Allowed domains must match exactly.
+        allowed_domains = {"ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"}
+        if parsed.netloc not in allowed_domains:
+            return False
+
+        # General trap detection: calendars, archives, date-based URLs, etc.
+        if _is_trap_url(url):
             return False
 
         ext_pattern = re.compile(
