@@ -2,7 +2,7 @@ import re
 import time
 import logging
 import hashlib
-from urllib.parse import urlparse, urljoin, urldefrag, urlunparse
+from urllib.parse import urlparse, urljoin, urldefrag, urlunparse, parse_qs, unquote
 from collections import defaultdict
 from bs4 import BeautifulSoup
 
@@ -84,27 +84,41 @@ def _get_soup(resp) -> BeautifulSoup:
     """Return a BeautifulSoup object for the response content."""
     return BeautifulSoup(resp.raw_response.content, "html.parser")
 
+import re
+
 def _is_trap_url(url: str) -> bool:
     """
-    General trap detection:
-      - If the URL contains certain keywords (e.g., calendar, ical, archive, revisions, rss, feed).
-      - If the URL path contains date segments (e.g. /day/YYYY-MM-DD, /date/YYYY-MM-DD or /YYYY/MM/DD).
+    Detects if a URL is a crawler trap by:
+    - Avoiding trap keywords (e.g., "calendar", "ical", "archive", "revisions", "feed").
+    - Detecting date-based traps (e.g., "/YYYY-MM", "/YYYY-MM-DD" anywhere in the URL, including query parameters).
+    - Blocking paginated URLs (e.g., "?page=3").
+    - Avoiding specific event-based query parameters.
     """
     lower_url = url.lower()
-    trap_keywords = ["calendar", "ical", "archive", "revisions", "rss", "feed"]
-    for keyword in trap_keywords:
-        if keyword in lower_url:
-            return True
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
 
-    # Check for date patterns in URL path.
-    date_patterns = [
-        re.compile(r'/day/\d{4}-\d{2}-\d{2}'),
-        re.compile(r'/date/\d{4}-\d{2}-\d{2}'),
-        re.compile(r'/\d{4}/\d{2}/\d{2}')
-    ]
-    for pattern in date_patterns:
-        if pattern.search(lower_url):
-            return True
+    # Trap Keywords
+    trap_keywords = ["calendar", "ical", "archive", "revisions", "feed"]
+    if any(keyword in lower_url for keyword in trap_keywords):
+        return True
+
+    # Detect "/YYYY-MM" or "/YYYY-MM-DD" anywhere in the URL (path or query)
+    date_trap_pattern = re.compile(r'\b\d{4}-\d{2}(-\d{2})?\b')
+    if date_trap_pattern.search(lower_url):
+        return True
+
+    # Check query parameters for encoded date patterns
+    for param, values in query_params.items():
+        for value in values:
+            decoded_value = unquote(value)
+            if date_trap_pattern.search(decoded_value):
+                return True
+
+    # block filtering traps: if the URL's query contains "filter[" (indicating multiple filter permutations)
+    if "filter[" in lower_url:
+        return True
+
 
     return False
 
