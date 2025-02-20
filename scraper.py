@@ -121,6 +121,7 @@ def scraper(url, resp):
     return only those URLs that are considered valid by is_valid.
     """
     logging.info(f"Scraping URL: {url}")
+    logging.info(f"{get_final_statistics()}")
     if resp is None or resp.raw_response is None:
         logging.info(f"Response is None for URL: {url}")
         return []
