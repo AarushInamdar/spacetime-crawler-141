@@ -143,7 +143,13 @@ def scraper(url, resp):
         logging.info(f"Skipping {url}: too few words ({len(tokens)} tokens).")
         return []
     
-    # Compute checksum to avoid duplicate pages.
+    # Exact duplicate detection (before computing checksum)
+    if page_text in EXACT_PAGE_CONTENTS:
+        logging.info(f"Exact duplicate page detected at URL: {url}")
+        return []
+    EXACT_PAGE_CONTENTS.add(page_text)
+
+    # compute checksum to avoid duplicate pages.
     checksum = hashlib.md5(page_text.encode("utf-8")).hexdigest()
     if checksum in PAGE_CHECKSUMS:
         logging.info(f"Duplicate page (checksum: {checksum}) detected at URL: {url}")
