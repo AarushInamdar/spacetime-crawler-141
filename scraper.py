@@ -13,8 +13,8 @@ from tokenizer import STOPWORDS as stopwords
 # --- Constants ---
 MIN_HTML_SIZE = 1024
 LARGE_PAGE_THRESHOLD = 5 * 1024 * 1024  # 5 MB threshold.
-MIN_WORD_COUNT = 200                    # Skip pages with fewer than 200 tokens.
-SCRAPER_DELAY = 0.001
+MIN_WORD_COUNT = 200                    # skip pages with fewer than 200 words.
+SCRAPER_DELAY = 0.001 # additional politeness
 
 # --- Logging configuration ---
 logging.basicConfig(filename="output.log", level=logging.INFO,
@@ -40,7 +40,6 @@ class CrawlerStats:
 
     def check_and_update_ics_domain(self, url: str):
         parsed = urlparse(url)
-        # Exact domain check is done in is_valid; here we simply count if the netloc is exactly "ics.uci.edu"
         if parsed.netloc == "ics.uci.edu":
             self.ics_subdomains[parsed.netloc] += 1
 
@@ -62,7 +61,7 @@ class CrawlerStats:
             "top_50_words": self.get_top_50_words()
         }
 
-# Global objects
+# global objects
 stats = CrawlerStats()
 tk = Tokenizer()
 
@@ -87,13 +86,6 @@ def _get_soup(resp) -> BeautifulSoup:
 import re
 
 def _is_trap_url(url: str) -> bool:
-    """
-    Detects if a URL is a crawler trap by:
-    - Avoiding trap keywords (e.g., "calendar", "ical", "archive", "revisions", "feed").
-    - Detecting date-based traps (e.g., "/YYYY-MM", "/YYYY-MM-DD" anywhere in the URL, including query parameters).
-    - Blocking paginated URLs (e.g., "?page=3").
-    - Avoiding specific event-based query parameters.
-    """
     lower_url = url.lower()
     parsed_url = urlparse(url)
     query_params = parse_qs(parsed_url.query)
@@ -115,15 +107,13 @@ def _is_trap_url(url: str) -> bool:
             if date_trap_pattern.search(decoded_value):
                 return True
 
-    # block filtering traps: if the URL's query contains "filter[" (indicating multiple filter permutations)
-    if "filter[" in lower_url:
+    # block filtering queries
+    if "?filter%" in lower_url:
         return True
-
 
     return False
 
-# --- Main Functions (names preserved) ---
-
+# --- Main Functions ---
 def scraper(url, resp):
     """
     Given a URL and the corresponding response from the cache server,
@@ -211,22 +201,6 @@ def extract_next_links(url, resp):
     return extracted_links
 
 def is_valid(url):
-    """
-    Determines whether the given URL should be crawled.
-    Only URLs that:
-      - Use the http or https scheme,
-      - Belong to the allowed domains,
-      - Do not point to files with undesired extensions,
-      - Do not exhibit suspicious patterns (e.g. excessive slashes),
-    
-    are considered valid.
-    
-    Parameters:
-        url (str): The URL to be evaluated.
-    
-    Returns:
-        bool: True if the URL is valid; False otherwise.
-    """
     try:
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"}:
