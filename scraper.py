@@ -140,7 +140,7 @@ def scraper(url, resp):
     tokens = tk.tokenize(page_text)
     
     # skip pages that have fewer than 50 words.
-    if len(tokens) < 50:
+    if len(tokens) < MIN_WORD_COUNT:
         logging.info(f"Skipping {url}: too few words ({len(tokens)} tokens).")
         return []
     
