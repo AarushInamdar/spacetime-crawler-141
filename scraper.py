@@ -13,7 +13,7 @@ from tokenizer import STOPWORDS as stopwords
 # --- Constants ---
 MIN_HTML_SIZE = 1024
 LARGE_PAGE_THRESHOLD = 5 * 1024 * 1024  # 5 MB threshold.
-MIN_WORD_COUNT = 200                    # skip pages with fewer than 200 words.
+MIN_WORD_COUNT = 50                    # skip pages with fewer than 50 words.
 SCRAPER_DELAY = 0.001 # additional politeness
 
 # --- Logging configuration ---
