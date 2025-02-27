@@ -86,6 +86,7 @@ def _get_soup(resp) -> BeautifulSoup:
 import re
 
 def _is_trap_url(url: str) -> bool:
+  """Check whether a URL is a trap based on keywords, url patterns, or if there is a date trap pattern or filters"""
     lower_url = url.lower()
     parsed_url = urlparse(url)
     query_params = parse_qs(parsed_url.query)
@@ -121,7 +122,7 @@ def scraper(url, resp):
     return only those URLs that are considered valid by is_valid.
     """
     logging.info(f"Scraping URL: {url}")
-    logging.info(f"{get_final_statistics()}")
+    logging.info(f"{stats.get_final_statistics()}")
     if resp is None or resp.raw_response is None:
         logging.info(f"Response is None for URL: {url}")
         return []
